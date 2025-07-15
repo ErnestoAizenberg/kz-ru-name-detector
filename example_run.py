@@ -1,4 +1,5 @@
 from joblib import load
+from script import classify_and_split_names
 
 model = load('name_classifier.joblib')
 
