@@ -164,6 +164,30 @@ def validate_name_columns(columns_str: str, max_columns: int = 10) -> List[int]:
         raise
 
 
+def has_kazakh_letters(name):
+    kazakh_letters = {
+        "Ә",
+        "ә",
+        "Ғ",
+        "ғ",
+        "Қ",
+        "қ",
+        "Ң",
+        "ң",
+        "Ө",
+        "ө",
+        "Ұ",
+        "ұ",
+        "Ү",
+        "ү",
+        "Һ",
+        "һ",
+        "І",
+        "і",
+    }
+    return any(char in kazakh_letters for char in name)
+
+
 def process_uploaded_file(
     file_stream, name_columns: List[int]
 ) -> Tuple[BytesIO, int, int]:
@@ -212,8 +236,12 @@ def process_uploaded_file(
                     if not full_name:
                         continue
 
-                    prediction = model.predict([full_name])[0]
+                    if has_kazakh_letters(full_name):
+                        ws_kz.append(row)
+                        kz_count += 1
+                        continue
 
+                    prediction = model.predict([full_name])[0]
                     if prediction == "kz":
                         ws_kz.append(row)
                         kz_count += 1
