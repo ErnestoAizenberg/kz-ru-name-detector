@@ -24,5 +24,3 @@ git clone https://github.com/ErnestoAizenberg/kz-ru-name-detector.git
 cd kz-ru-name-detector
 pip install -r requirements.txt
 flask run```
-
----
