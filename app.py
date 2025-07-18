@@ -193,14 +193,11 @@ def process_uploaded_file(
 ) -> Tuple[BytesIO, int, int]:
     """Process the uploaded Excel file and return results"""
     try:
-        with tempfile.NamedTemporaryFile(
-            suffix=".xlsx"
-        ) as tmp_source, tempfile.NamedTemporaryFile(
-            suffix=".xlsx"
-        ) as tmp_kz, tempfile.NamedTemporaryFile(
-            suffix=".xlsx"
-        ) as tmp_ru:
-
+        with (
+            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_source,
+            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_kz,
+            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_ru,
+        ):
             # Save uploaded file
             file_stream.save(tmp_source.name)
 
@@ -359,7 +356,7 @@ def process_names():
         response.headers.set(
             "Content-Disposition",
             "attachment",
-            filename=f'classified_names_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip',
+            filename=f"classified_names_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
         )
 
         logger.info("Successfully processed file")
@@ -370,6 +367,46 @@ def process_names():
     except Exception as e:
         logger.error(f"Unexpected processing error: {str(e)}")
         raise FileProcessingError("An unexpected error occurred during processing")
+
+
+@app.route("/classify_name", methods=["POST"])
+def classify_name():
+    """Endpoint for classifying a single name"""
+    try:
+        data = request.get_json()
+        name = data.get("name", "").strip()
+
+        if not name:
+            return jsonify({"error": "Name is required"}), 400
+
+        # First check for Kazakh letters
+        if has_kazakh_letters(name):
+            return jsonify(
+                {
+                    "name": name,
+                    "classification": "kz",
+                    "method": "kazakh_letters_check",
+                    "probability": 1.0,
+                }
+            )
+
+        # Use model for prediction
+        prediction = model.predict([name])[0]
+        proba = model.predict_proba([name])[0]
+        probability = proba[0] if prediction == "kz" else proba[1]
+
+        return jsonify(
+            {
+                "name": name,
+                "classification": prediction,
+                "method": "model_prediction",
+                "probability": float(probability),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error classifying name: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/")
@@ -437,6 +474,38 @@ def index():
             input[type="submit"]:hover {
                 background: #2980b9;
             }
+            .submit-btn {
+                background: #2ecc71;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .submit-btn:hover {
+                background: #27ae60;
+            }
+            .result-kz {
+                background-color: #e8f8f5;
+                border: 1px solid #2ecc71;
+            }
+            .result-ru {
+                background-color: #fef9e7;
+                border: 1px solid #f39c12;
+            }
+            .probability {
+                margin-top: 10px;
+                height: 20px;
+                background: #ecf0f1;
+                border-radius: 3px;
+                overflow: hidden;
+            }
+            .probability-bar {
+                height: 100%;
+                background: #3498db;
+                width: 0%;
+                transition: width 0.5s;
+            }
             small {
                 color: #7f8c8d;
                 font-size: 0.9em;
@@ -476,6 +545,17 @@ def index():
             </form>
         </div>
 
+        <div class="form-container" style="margin-top: 30px;">
+            <h3 style="text-align: center; margin-bottom: 15px;">Test Single Name</h3>
+            <form id="singleNameForm" onsubmit="checkSingleName(event)">
+                <div class="form-group">
+                    <label for="test_name">Enter a name to classify:</label>
+                    <input type="text" id="test_name" name="test_name" required>
+                </div>
+                <input type="submit" value="Check" class="submit-btn">
+            </form>
+            <div id="result" style="margin-top: 20px; padding: 15px; border-radius: 5px; display: none;"></div>
+        </div>
         <script>
             // Basic form validation
             document.getElementById('uploadForm').addEventListener('submit', function(e) {
@@ -502,6 +582,51 @@ def index():
                 submitBtn.disabled = true;
                 submitBtn.value = 'Processing...';
             });
+            // Handle single name check
+            function checkSingleName(event) {
+                event.preventDefault();
+                const name = document.getElementById('test_name').value.trim();
+                if (!name) return;
+
+                fetch('/classify_name', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({name: name})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.style.display = 'block';
+
+                    if (data.classification === 'kz') {
+                        resultDiv.className = 'result result-kz';
+                        resultDiv.innerHTML = `
+                            <h4>Result for: ${data.name}</h4>
+                            <p><strong>Classification:</strong> Kazakh (KZ)</p>
+                            ${data.method === 'kazakh_letters_check' ?
+                              '<p>Detected Kazakh letters</p>' :
+                              `<p>Model prediction (${(data.probability * 100).toFixed(1)}% confidence)</p>`
+                            }
+                        `;
+                    } else {
+                        resultDiv.className = 'result result-ru';
+                        resultDiv.innerHTML = `
+                            <h4>Result for: ${data.name}</h4>
+                            <p><strong>Classification:</strong> Russian (RU)</p>
+                            <p>Model prediction (${(data.probability * 100).toFixed(1)}% confidence)</p>
+                            <div class="probability">
+                                <div class="probability-bar" style="width: ${data.probability * 100}%"></div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while processing the name');
+                });
+            }
         </script>
     </body>
     </html>
