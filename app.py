@@ -3,7 +3,7 @@ import os
 import tempfile
 from datetime import datetime
 from io import BytesIO
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from zipfile import ZipFile
 
 import openpyxl
@@ -35,18 +35,13 @@ TRAINING_DATA_URLS = [
     "https://raw.githubusercontent.com/ErnestoAizenberg/kz-ru-name-detector/refs/heads/main/kz_names_2.xlsx",
 ]
 
-
 class ModelTrainingError(Exception):
     """Custom exception for model training failures"""
-
     pass
-
 
 class FileProcessingError(Exception):
     """Custom exception for file processing failures"""
-
     pass
-
 
 def setup_model() -> Pipeline:
     """Initialize or load the classification model"""
@@ -64,7 +59,6 @@ def setup_model() -> Pipeline:
         logger.error(f"Failed to setup model: {str(e)}")
         raise ModelTrainingError("Could not initialize the classification model")
 
-
 def download_training_data() -> None:
     """Download training data files"""
     try:
@@ -81,7 +75,6 @@ def download_training_data() -> None:
         logger.error(f"Failed to download training data: {str(e)}")
         raise ModelTrainingError("Could not download training data")
 
-
 def df_to_string_list(df: pd.DataFrame) -> List[str]:
     """Convert DataFrame rows to list of strings"""
     try:
@@ -92,7 +85,6 @@ def df_to_string_list(df: pd.DataFrame) -> List[str]:
     except Exception as e:
         logger.error(f"DataFrame conversion failed: {str(e)}")
         raise ModelTrainingError("Could not process training data")
-
 
 def train_model() -> Pipeline:
     """Train and return a new classification model"""
@@ -136,68 +128,36 @@ def train_model() -> Pipeline:
         logger.error(f"Model training failed: {str(e)}")
         raise ModelTrainingError("Model training process failed")
 
-
-def join_cols_to_full_name(row: tuple, usecols: List[int]) -> str:
-    """Combine specified columns into a full name string"""
-    try:
-        return " ".join(
-            str(row[col]).strip() for col in usecols if row[col] is not None
-        ).strip()
-    except (IndexError, TypeError) as e:
-        logger.warning(f"Failed to join name parts: {str(e)}, row: {row}")
-        return ""
-
-
-def validate_name_columns(columns_str: str, max_columns: int = 10) -> List[int]:
-    """Validate and parse name columns input"""
-    try:
-        columns = [int(col.strip()) for col in columns_str.split(",")]
-        if not columns:
-            raise ValueError("No columns specified")
-        if any(col < 0 for col in columns):
-            raise ValueError("Column numbers cannot be negative")
-        if len(columns) > max_columns:
-            raise ValueError(f"Maximum {max_columns} columns allowed")
-        return columns
-    except ValueError as e:
-        logger.error(f"Invalid name columns input: {columns_str} - {str(e)}")
-        raise
-
-
-def has_kazakh_letters(name):
+def has_kazakh_letters(name: str) -> bool:
+    """Check if name contains Kazakh-specific letters"""
     kazakh_letters = {
-        "Ә",
-        "ә",
-        "Ғ",
-        "ғ",
-        "Қ",
-        "қ",
-        "Ң",
-        "ң",
-        "Ө",
-        "ө",
-        "Ұ",
-        "ұ",
-        "Ү",
-        "ү",
-        "Һ",
-        "һ",
-        "І",
-        "і",
+        "Ә", "ә", "Ғ", "ғ", "Қ", "қ", "Ң", "ң",
+        "Ө", "ө", "Ұ", "ұ", "Ү", "ү", "Һ", "һ", "І", "і",
     }
     return any(char in kazakh_letters for char in name)
 
-
 def process_uploaded_file(
-    file_stream, name_columns: List[int]
-) -> Tuple[BytesIO, int, int]:
-    """Process the uploaded Excel file and return results"""
+    file_stream,
+    name_columns: List[int],
+    country_filter: Optional[str] = None,
+    address_columns: Optional[List[int]] = None,
+    search_value: Optional[str] = None
+) -> Tuple[BytesIO, int]:
+    """
+    Process the uploaded Excel file with enhanced filtering options
+
+    Args:
+        file_stream: Uploaded file stream
+        name_columns: List of column indices containing name parts
+        country_filter: 'kz' or 'ru' to filter by country
+        address_columns: List of column indices containing address information
+        search_value: Value to search in address columns
+
+    Returns:
+        Tuple containing: (output file buffer, count of matching records)
+    """
     try:
-        with (
-            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_source,
-            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_kz,
-            tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_ru,
-        ):
+        with tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp_source:
             # Save uploaded file
             file_stream.save(tmp_source.name)
 
@@ -209,90 +169,88 @@ def process_uploaded_file(
                 logger.error(f"Invalid Excel file: {str(e)}")
                 raise FileProcessingError("The uploaded file is not a valid Excel file")
 
-            # Prepare output files
-            wb_kz = openpyxl.Workbook()
-            ws_kz = wb_kz.active
-            wb_ru = openpyxl.Workbook()
-            ws_ru = wb_ru.active
+            # Prepare output file
+            wb_output = openpyxl.Workbook()
+            ws_output = wb_output.active
 
             # Copy headers if they exist
             if ws_source.max_row > 0:
                 headers = [cell.value for cell in ws_source[1]]
-                ws_kz.append(headers)
-                ws_ru.append(headers)
+                ws_output.append(headers)
 
             # Process rows
-            kz_count = 0
-            ru_count = 0
+            match_count = 0
             processed_rows = 0
 
             for row in ws_source.iter_rows(min_row=2, values_only=True):
                 processed_rows += 1
                 try:
-                    full_name = join_cols_to_full_name(row, name_columns)
-                    if not full_name:
-                        continue
+                    # Check address search if provided
+                    if search_value and address_columns:
+                        address_parts = [str(row[col]).lower() for col in address_columns if col < len(row)]
+                        full_address = " ".join(address_parts)
+                        if search_value.lower() not in full_address:
+                            continue
 
-                    if has_kazakh_letters(full_name):
-                        ws_kz.append(row)
-                        kz_count += 1
-                        continue
+                    # Process name classification if country filter is set
+                    if country_filter:
+                        full_name = " ".join(
+                            str(row[col]).strip() for col in name_columns
+                            if col < len(row) and row[col] is not None
+                        ).strip()
 
-                    prediction = model.predict([full_name])[0]
-                    if prediction == "kz":
-                        ws_kz.append(row)
-                        kz_count += 1
-                    elif prediction == "ru":
-                        ws_ru.append(row)
-                        ru_count += 1
-                    else:
-                        logger.warning(
-                            f"Unexpected prediction for '{full_name}': {prediction}"
-                        )
+                        if not full_name:
+                            continue
+
+                        # First check for Kazakh letters if we're looking for KZ names
+                        if country_filter == "kz" and has_kazakh_letters(full_name):
+                            ws_output.append(row)
+                            match_count += 1
+                            continue
+
+                        # Use model for prediction
+                        prediction = model.predict([full_name])[0]
+                        if prediction != country_filter:
+                            continue
+
+                    # If we get here, the row matches all criteria
+                    ws_output.append(row)
+                    match_count += 1
+
                 except Exception as e:
                     logger.warning(f"Error processing row {processed_rows}: {str(e)}")
                     continue
 
             logger.info(
-                f"Processed {processed_rows} rows. Results: KZ={kz_count}, RU={ru_count}"
+                f"Processed {processed_rows} rows. Matching records: {match_count}"
             )
 
-            # Save results
-            wb_kz.save(tmp_kz.name)
-            wb_ru.save(tmp_ru.name)
+            # Save results to buffer
+            output_buffer = BytesIO()
+            wb_output.save(output_buffer)
+            output_buffer.seek(0)
 
-            # Create zip archive
-            zip_buffer = BytesIO()
-            with ZipFile(zip_buffer, "w") as zip_file:
-                zip_file.write(tmp_kz.name, "kz_names.xlsx")
-                zip_file.write(tmp_ru.name, "ru_names.xlsx")
-
-            zip_buffer.seek(0)
-            return zip_buffer, kz_count, ru_count
+            return output_buffer, match_count
 
     except Exception as e:
         logger.error(f"File processing failed: {str(e)}")
         raise FileProcessingError("Could not process the uploaded file")
 
-
-# Error handlers
+# Error handlers (remain the same as before)
 @app.errorhandler(HTTPException)
 def handle_http_error(e):
     logger.warning(f"HTTP error {e.code}: {e.description}")
     return jsonify({"error": e.name, "message": e.description}), e.code
-
 
 @app.errorhandler(ModelTrainingError)
 def handle_model_error(e):
     logger.error(f"Model error: {str(e)}")
     return jsonify({"error": "Model Error", "message": str(e)}), 500
 
-
 @app.errorhandler(FileProcessingError)
 def handle_file_error(e):
     logger.error(f"File processing error: {str(e)}")
     return jsonify({"error": "File Processing Error", "message": str(e)}), 400
-
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
@@ -307,7 +265,6 @@ def handle_unexpected_error(e):
         500,
     )
 
-
 # Initialize model
 try:
     model = setup_model()
@@ -315,10 +272,9 @@ except ModelTrainingError:
     logger.critical("Application failed to start due to model initialization error")
     raise
 
-
 @app.route("/process_names", methods=["POST"])
 def process_names():
-    """API endpoint for processing name files"""
+    """API endpoint for processing name files with enhanced filtering"""
     try:
         logger.info("Name processing request received")
 
@@ -336,38 +292,64 @@ def process_names():
             logger.warning(f"Invalid file type: {file.filename}")
             raise FileProcessingError("Only Excel files (.xlsx, .xls) are supported")
 
-        # Get name columns parameter
+        # Get parameters
         name_columns_str = request.form.get("name_columns", "0,1,2")
+        country_filter = request.form.get("country_filter")  # 'kz', 'ru', or None
+        address_columns_str = request.form.get("address_columns", "")
+        search_value = request.form.get("search_value", "").strip()
+
         try:
-            name_columns = validate_name_columns(name_columns_str)
+            name_columns = [int(col.strip()) for col in name_columns_str.split(",")]
+            address_columns = [int(col.strip()) for col in address_columns_str.split(",")] if address_columns_str else None
         except ValueError as e:
-            raise FileProcessingError(str(e))
+            raise FileProcessingError(f"Invalid column numbers: {str(e)}")
+
+        # Validate country filter
+        if country_filter and country_filter not in ("kz", "ru"):
+            raise FileProcessingError("Invalid country filter. Use 'kz' or 'ru' or leave empty")
+
+        # Validate search parameters
+        if search_value and not address_columns:
+            raise FileProcessingError("Address columns must be specified when using address search")
 
         # Process file
         try:
-            zip_buffer, kz_count, ru_count = process_uploaded_file(file, name_columns)
+            output_buffer, match_count = process_uploaded_file(
+                file,
+                name_columns,
+                country_filter,
+                address_columns,
+                search_value if search_value else None
+            )
         except Exception as e:
             logger.error(f"File processing failed: {str(e)}")
             raise FileProcessingError("Could not process the file")
 
         # Prepare response
-        response = make_response(zip_buffer.getvalue())
-        response.headers.set("Content-Type", "application/zip")
+        response = make_response(output_buffer.getvalue())
+        response.headers.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        filename_parts = ["filtered_names"]
+        if country_filter:
+            filename_parts.append(country_filter)
+        if search_value:
+            filename_parts.append("search")
+        filename_parts.append(datetime.now().strftime("%Y%m%d_%H%M%S"))
+
         response.headers.set(
             "Content-Disposition",
             "attachment",
-            filename=f"classified_names_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+            filename=f"{'_'.join(filename_parts)}.xlsx",
         )
 
-        logger.info("Successfully processed file")
+        logger.info(f"Successfully processed file with {match_count} matching records")
         return response
 
     except FileProcessingError:
-        raise  # Will be handled by the error handler
+        raise
     except Exception as e:
         logger.error(f"Unexpected processing error: {str(e)}")
         raise FileProcessingError("An unexpected error occurred during processing")
-
 
 @app.route("/classify_name", methods=["POST"])
 def classify_name():
@@ -408,10 +390,9 @@ def classify_name():
         logger.error(f"Error classifying name: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
 
-
 @app.route("/")
 def index():
-    """Main page with upload form"""
+    """Main page with enhanced upload form including address search"""
     logger.info("Serving index page")
     return """
     <!DOCTYPE html>
@@ -419,7 +400,7 @@ def index():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Name Classifier (KZ/RU)</title>
+        <title>Name Classifier (KZ/RU) with Address Search</title>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -432,12 +413,14 @@ def index():
             h1 {
                 color: #2c3e50;
                 text-align: center;
+                margin-bottom: 20px;
             }
             .form-container {
                 background: #f9f9f9;
                 padding: 20px;
                 border-radius: 8px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
             }
             .form-group {
                 margin-bottom: 15px;
@@ -447,20 +430,14 @@ def index():
                 margin-bottom: 5px;
                 font-weight: bold;
             }
-            input[type="file"] {
+            input[type="file"], input[type="text"], select {
                 width: 100%;
                 padding: 8px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
-                background: white;
+                box-sizing: border-box;
             }
-            input[type="text"] {
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-            }
-            input[type="submit"] {
+            input[type="submit"], .submit-btn {
                 background: #3498db;
                 color: white;
                 border: none;
@@ -470,20 +447,26 @@ def index():
                 font-size: 16px;
                 display: block;
                 margin: 20px auto 0;
+                width: auto;
             }
-            input[type="submit"]:hover {
+            input[type="submit"]:hover, .submit-btn:hover {
                 background: #2980b9;
             }
-            .submit-btn {
-                background: #2ecc71;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                cursor: pointer;
+            .filter-section {
+                background: #eef7ff;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 15px 0;
             }
-            .submit-btn:hover {
-                background: #27ae60;
+            .filter-section h3 {
+                margin-top: 0;
+                color: #2c3e50;
+            }
+            .file-info, small {
+                color: #7f8c8d;
+                font-size: 0.9em;
+                display: block;
+                margin-top: 5px;
             }
             .result-kz {
                 background-color: #e8f8f5;
@@ -506,15 +489,6 @@ def index():
                 width: 0%;
                 transition: width 0.5s;
             }
-            small {
-                color: #7f8c8d;
-                font-size: 0.9em;
-            }
-            .file-info {
-                margin-top: 5px;
-                font-size: 0.9em;
-                color: #7f8c8d;
-            }
             @media (max-width: 600px) {
                 body {
                     padding: 10px;
@@ -526,7 +500,8 @@ def index():
         </style>
     </head>
     <body>
-        <h1>Name Classifier (KZ/RU)</h1>
+        <h1>Name Classifier (KZ/RU) with Address Search</h1>
+
         <div class="form-container">
             <form action="/process_names" method="post" enctype="multipart/form-data" id="uploadForm">
                 <div class="form-group">
@@ -541,11 +516,37 @@ def index():
                     <small>Example: For first name in column 0 and last name in column 1, use "0,1"</small>
                 </div>
 
+                <div class="filter-section">
+                    <h3>Name Filter</h3>
+                    <div class="form-group">
+                        <label for="country_filter">Filter by country:</label>
+                        <select id="country_filter" name="country_filter">
+                            <option value="">All countries</option>
+                            <option value="kz">Kazakh (KZ) only</option>
+                            <option value="ru">Russian (RU) only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <h3>Address Search</h3>
+                    <div class="form-group">
+                        <label for="address_columns">Columns containing address (0-based, comma-separated):</label>
+                        <input type="text" id="address_columns" name="address_columns">
+                        <small>Leave empty to disable address search</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="search_value">Search value in addresses:</label>
+                        <input type="text" id="search_value" name="search_value">
+                        <small>Enter text to search in address columns</small>
+                    </div>
+                </div>
+
                 <input type="submit" value="Process" id="submitBtn">
             </form>
         </div>
 
-        <div class="form-container" style="margin-top: 30px;">
+        <div class="form-container">
             <h3 style="text-align: center; margin-bottom: 15px;">Test Single Name</h3>
             <form id="singleNameForm" onsubmit="checkSingleName(event)">
                 <div class="form-group">
@@ -556,11 +557,13 @@ def index():
             </form>
             <div id="result" style="margin-top: 20px; padding: 15px; border-radius: 5px; display: none;"></div>
         </div>
+
         <script>
-            // Basic form validation
             document.getElementById('uploadForm').addEventListener('submit', function(e) {
                 const fileInput = document.getElementById('file');
                 const columnsInput = document.getElementById('name_columns');
+                const addressColumnsInput = document.getElementById('address_columns');
+                const searchValueInput = document.getElementById('search_value');
                 const submitBtn = document.getElementById('submitBtn');
 
                 // Validate file extension
@@ -571,9 +574,22 @@ def index():
                     return;
                 }
 
-                // Validate columns format
+                // Validate name columns format
                 if (!/^\d+(,\d+)*$/.test(columnsInput.value)) {
-                    alert('Please enter valid column numbers (e.g. "0,1,2")');
+                    alert('Please enter valid name column numbers (e.g. "0,1,2")');
+                    e.preventDefault();
+                    return;
+                }
+
+                // Validate address search parameters
+                if (searchValueInput.value.trim() && !addressColumnsInput.value.trim()) {
+                    alert('Please specify address columns when using address search');
+                    e.preventDefault();
+                    return;
+                }
+
+                if (addressColumnsInput.value.trim() && !/^\d+(,\d+)*$/.test(addressColumnsInput.value)) {
+                    alert('Please enter valid address column numbers (e.g. "3,4")');
                     e.preventDefault();
                     return;
                 }
@@ -582,7 +598,7 @@ def index():
                 submitBtn.disabled = true;
                 submitBtn.value = 'Processing...';
             });
-            // Handle single name check
+
             function checkSingleName(event) {
                 event.preventDefault();
                 const name = document.getElementById('test_name').value.trim();
@@ -631,7 +647,6 @@ def index():
     </body>
     </html>
     """
-
 
 if __name__ == "__main__":
     try:
