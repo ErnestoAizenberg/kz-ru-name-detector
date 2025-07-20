@@ -12,7 +12,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     filename="test_name_classifier.log",
-    filemode='w'  # Overwrite log file for each test run
+    filemode="w",  # Overwrite log file for each test run
 )
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,13 @@ class TestNameClassifier(unittest.TestCase):
             ["Айдар", "Мухамеджанов", "Сергеевич", "Алматы, ул. Абая 1", "7771234567"],
             ["Иван", "Петров", "Иванович", "Москва, ул. Ленина 5", "4951234567"],
             ["Алия", "Қарақыз", "", "Астана, пр. Республики 10", "7172123456"],
-            ["Сергей", "Смирнов", "Петрович", "Санкт-Петербург, Невский пр. 20", "8123456789"],
+            [
+                "Сергей",
+                "Смирнов",
+                "Петрович",
+                "Санкт-Петербург, Невский пр. 20",
+                "8123456789",
+            ],
         ]
 
         for row in test_data:
@@ -134,14 +140,18 @@ class TestNameClassifier(unittest.TestCase):
             )
 
         logger.debug(f"Found {count} records matching address search: '{search_term}'")
-        self.assertEqual(count, 1, f"Should find 1 record with '{search_term}' in address")
+        self.assertEqual(
+            count, 1, f"Should find 1 record with '{search_term}' in address"
+        )
         logger.info("Address search test passed - found matching record")
 
     def test_06_process_file_combined_filters(self):
         """Test file processing with combined filters"""
         country_filter = "kz"
         search_term = "Астана"
-        logger.debug(f"Starting combined filter test (country: {country_filter}, search: '{search_term}')")
+        logger.debug(
+            f"Starting combined filter test (country: {country_filter}, search: '{search_term}')"
+        )
         with open("kz_names_1.xlsx", "rb") as f:
             buffer, count = process_uploaded_file(
                 f,
@@ -152,7 +162,11 @@ class TestNameClassifier(unittest.TestCase):
             )
 
         logger.debug(f"Found {count} records matching combined filters")
-        self.assertEqual(count, 1, f"Should find 1 {country_filter.upper()} record with '{search_term}' in address")
+        self.assertEqual(
+            count,
+            1,
+            f"Should find 1 {country_filter.upper()} record with '{search_term}' in address",
+        )
         logger.info("Combined filters test passed - found exact match")
 
     def test_07_api_endpoint(self):
@@ -205,7 +219,9 @@ class TestNameClassifier(unittest.TestCase):
                 search_value=None,
             )
 
-        logger.debug(f"Correctly raised exception for invalid file: {str(context.exception)}")
+        logger.debug(
+            f"Correctly raised exception for invalid file: {str(context.exception)}"
+        )
         logger.info("Invalid file handling test passed")
 
 
