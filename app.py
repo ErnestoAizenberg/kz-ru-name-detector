@@ -402,99 +402,216 @@ def index():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Name Classifier (KZ/RU) with Address Search</title>
         <style>
+            :root {
+                --primary: #4361ee;
+                --primary-hover: #3a56d4;
+                --secondary: #f72585;
+                --light: #f8f9fa;
+                --dark: #212529;
+                --gray: #6c757d;
+                --success: #4cc9f0;
+                --warning: #f8961e;
+                --border-radius: 12px;
+                --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+                --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            }
+
             body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                line-height: 1.5;
                 max-width: 800px;
                 margin: 0 auto;
-                padding: 20px;
-                color: #333;
+                padding: 2rem;
+                color: var(--dark);
+                background-color: #f5f7fa;
+                -webkit-font-smoothing: antialiased;
             }
+
             h1 {
-                color: #2c3e50;
+                color: var(--dark);
                 text-align: center;
-                margin-bottom: 20px;
+                margin-bottom: 2rem;
+                font-weight: 700;
+                font-size: 2.2rem;
+                letter-spacing: -0.5px;
             }
+
             .form-container {
-                background: #f9f9f9;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                margin-bottom: 20px;
+                background: white;
+                padding: 2rem;
+                border-radius: var(--border-radius);
+                box-shadow: var(--box-shadow);
+                margin-bottom: 2rem;
+                transition: var(--transition);
+                border: 1px solid rgba(0, 0, 0, 0.03);
             }
+
+            .form-container:hover {
+                box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+            }
+
             .form-group {
-                margin-bottom: 15px;
+                margin-bottom: 1.5rem;
             }
+
             label {
                 display: block;
-                margin-bottom: 5px;
-                font-weight: bold;
+                margin-bottom: 0.5rem;
+                font-weight: 600;
+                color: var(--dark);
+                font-size: 0.95rem;
             }
-            input[type="file"], input[type="text"], select {
+
+            input[type="file"],
+            input[type="text"],
+            select {
                 width: 100%;
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
+                padding: 0.75rem 1rem;
+                border: 1px solid #e0e0e0;
+                border-radius: var(--border-radius);
                 box-sizing: border-box;
+                font-family: inherit;
+                font-size: 1rem;
+                transition: var(--transition);
+                background-color: var(--light);
             }
-            input[type="submit"], .submit-btn {
-                background: #3498db;
+
+            input[type="file"]:focus,
+            input[type="text"]:focus,
+            select:focus {
+                outline: none;
+                border-color: var(--primary);
+                box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+            }
+
+            input[type="submit"],
+            .submit-btn {
+                background: var(--primary);
                 color: white;
                 border: none;
-                padding: 10px 20px;
-                border-radius: 4px;
+                padding: 0.75rem 2rem;
+                border-radius: var(--border-radius);
                 cursor: pointer;
-                font-size: 16px;
-                display: block;
-                margin: 20px auto 0;
+                font-size: 1rem;
+                font-weight: 600;
+                display: inline-block;
+                margin: 1.5rem auto 0;
                 width: auto;
+                transition: var(--transition);
+                box-shadow: 0 2px 10px rgba(67, 97, 238, 0.3);
             }
-            input[type="submit"]:hover, .submit-btn:hover {
-                background: #2980b9;
+
+            input[type="submit"]:hover,
+            .submit-btn:hover {
+                background: var(--primary-hover);
+                box-shadow: 0 4px 14px rgba(67, 97, 238, 0.4);
+                transform: translateY(-1px);
             }
+
             .filter-section {
-                background: #eef7ff;
-                padding: 15px;
-                border-radius: 5px;
-                margin: 15px 0;
+                background: rgba(67, 97, 238, 0.05);
+                padding: 1.5rem;
+                border-radius: var(--border-radius);
+                margin: 1.5rem 0;
+                border: 1px solid rgba(67, 97, 238, 0.1);
             }
+
             .filter-section h3 {
                 margin-top: 0;
-                color: #2c3e50;
+                color: var(--primary);
+                font-size: 1.1rem;
+                font-weight: 600;
+                margin-bottom: 1rem;
             }
+
             .file-info, small {
-                color: #7f8c8d;
-                font-size: 0.9em;
+                color: var(--gray);
+                font-size: 0.85rem;
                 display: block;
-                margin-top: 5px;
+                margin-top: 0.5rem;
             }
+
             .result-kz {
-                background-color: #e8f8f5;
-                border: 1px solid #2ecc71;
+                background-color: rgba(76, 201, 240, 0.1);
+                border: 1px solid var(--success);
+                border-left: 4px solid var(--success);
             }
+
             .result-ru {
-                background-color: #fef9e7;
-                border: 1px solid #f39c12;
+                background-color: rgba(248, 150, 30, 0.1);
+                border: 1px solid var(--warning);
+                border-left: 4px solid var(--warning);
             }
+
             .probability {
-                margin-top: 10px;
-                height: 20px;
-                background: #ecf0f1;
-                border-radius: 3px;
+                margin-top: 1rem;
+                height: 8px;
+                background: #e9ecef;
+                border-radius: 4px;
                 overflow: hidden;
             }
+
             .probability-bar {
                 height: 100%;
-                background: #3498db;
+                background: linear-gradient(90deg, var(--primary), var(--secondary));
                 width: 0%;
-                transition: width 0.5s;
+                transition: width 0.7s ease-out;
             }
-            @media (max-width: 600px) {
+
+            /* Анимации */
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
+            .form-container {
+                animation: fadeIn 0.6s ease-out;
+            }
+
+            /* Кастомизация файлового инпута */
+            .file-input-wrapper {
+                position: relative;
+                overflow: hidden;
+                display: inline-block;
+                width: 100%;
+            }
+
+            .file-input-button {
+                background: var(--light);
+                border: 1px dashed #ced4da;
+                border-radius: var(--border-radius);
+                padding: 2rem;
+                text-align: center;
+                cursor: pointer;
+                transition: var(--transition);
+            }
+
+            .file-input-button:hover {
+                background: #e9ecef;
+                border-color: var(--primary);
+            }
+
+            .file-input-wrapper input[type="file"] {
+                position: absolute;
+                left: 0;
+                top: 0;
+                opacity: 0;
+                width: 100%;
+                height: 100%;
+                cursor: pointer;
+            }
+
+            @media (max-width: 768px) {
                 body {
-                    padding: 10px;
+                    padding: 1rem;
                 }
+
+                h1 {
+                    font-size: 1.8rem;
+                }
+
                 .form-container {
-                    padding: 15px;
+                    padding: 1.5rem;
                 }
             }
         </style>
