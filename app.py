@@ -3,8 +3,7 @@ import os
 import tempfile
 from datetime import datetime
 from io import BytesIO
-from typing import List, Tuple, Optional
-from zipfile import ZipFile
+from typing import List, Optional, Tuple
 
 import openpyxl
 import pandas as pd
@@ -35,13 +34,18 @@ TRAINING_DATA_URLS = [
     "https://raw.githubusercontent.com/ErnestoAizenberg/kz-ru-name-detector/refs/heads/main/kz_names_2.xlsx",
 ]
 
+
 class ModelTrainingError(Exception):
     """Custom exception for model training failures"""
+
     pass
+
 
 class FileProcessingError(Exception):
     """Custom exception for file processing failures"""
+
     pass
+
 
 def setup_model() -> Pipeline:
     """Initialize or load the classification model"""
@@ -59,6 +63,7 @@ def setup_model() -> Pipeline:
         logger.error(f"Failed to setup model: {str(e)}")
         raise ModelTrainingError("Could not initialize the classification model")
 
+
 def download_training_data() -> None:
     """Download training data files"""
     try:
@@ -75,6 +80,7 @@ def download_training_data() -> None:
         logger.error(f"Failed to download training data: {str(e)}")
         raise ModelTrainingError("Could not download training data")
 
+
 def df_to_string_list(df: pd.DataFrame) -> List[str]:
     """Convert DataFrame rows to list of strings"""
     try:
@@ -85,6 +91,7 @@ def df_to_string_list(df: pd.DataFrame) -> List[str]:
     except Exception as e:
         logger.error(f"DataFrame conversion failed: {str(e)}")
         raise ModelTrainingError("Could not process training data")
+
 
 def train_model() -> Pipeline:
     """Train and return a new classification model"""
@@ -128,20 +135,38 @@ def train_model() -> Pipeline:
         logger.error(f"Model training failed: {str(e)}")
         raise ModelTrainingError("Model training process failed")
 
+
 def has_kazakh_letters(name: str) -> bool:
     """Check if name contains Kazakh-specific letters"""
     kazakh_letters = {
-        "Ә", "ә", "Ғ", "ғ", "Қ", "қ", "Ң", "ң",
-        "Ө", "ө", "Ұ", "ұ", "Ү", "ү", "Һ", "һ", "І", "і",
+        "Ә",
+        "ә",
+        "Ғ",
+        "ғ",
+        "Қ",
+        "қ",
+        "Ң",
+        "ң",
+        "Ө",
+        "ө",
+        "Ұ",
+        "ұ",
+        "Ү",
+        "ү",
+        "Һ",
+        "һ",
+        "І",
+        "і",
     }
     return any(char in kazakh_letters for char in name)
+
 
 def process_uploaded_file(
     file_stream,
     name_columns: List[int],
     country_filter: Optional[str] = None,
     address_columns: Optional[List[int]] = None,
-    search_value: Optional[str] = None
+    search_value: Optional[str] = None,
 ) -> Tuple[BytesIO, int]:
     """
     Process the uploaded Excel file with enhanced filtering options
@@ -187,7 +212,11 @@ def process_uploaded_file(
                 try:
                     # Check address search if provided
                     if search_value and address_columns:
-                        address_parts = [str(row[col]).lower() for col in address_columns if col < len(row)]
+                        address_parts = [
+                            str(row[col]).lower()
+                            for col in address_columns
+                            if col < len(row)
+                        ]
                         full_address = " ".join(address_parts)
                         if search_value.lower() not in full_address:
                             continue
@@ -195,7 +224,8 @@ def process_uploaded_file(
                     # Process name classification if country filter is set
                     if country_filter:
                         full_name = " ".join(
-                            str(row[col]).strip() for col in name_columns
+                            str(row[col]).strip()
+                            for col in name_columns
                             if col < len(row) and row[col] is not None
                         ).strip()
 
@@ -236,21 +266,25 @@ def process_uploaded_file(
         logger.error(f"File processing failed: {str(e)}")
         raise FileProcessingError("Could not process the uploaded file")
 
+
 # Error handlers (remain the same as before)
 @app.errorhandler(HTTPException)
 def handle_http_error(e):
     logger.warning(f"HTTP error {e.code}: {e.description}")
     return jsonify({"error": e.name, "message": e.description}), e.code
 
+
 @app.errorhandler(ModelTrainingError)
 def handle_model_error(e):
     logger.error(f"Model error: {str(e)}")
     return jsonify({"error": "Model Error", "message": str(e)}), 500
 
+
 @app.errorhandler(FileProcessingError)
 def handle_file_error(e):
     logger.error(f"File processing error: {str(e)}")
     return jsonify({"error": "File Processing Error", "message": str(e)}), 400
+
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
@@ -265,12 +299,14 @@ def handle_unexpected_error(e):
         500,
     )
 
+
 # Initialize model
 try:
     model = setup_model()
 except ModelTrainingError:
     logger.critical("Application failed to start due to model initialization error")
     raise
+
 
 @app.route("/process_names", methods=["POST"])
 def process_names():
@@ -300,17 +336,25 @@ def process_names():
 
         try:
             name_columns = [int(col.strip()) for col in name_columns_str.split(",")]
-            address_columns = [int(col.strip()) for col in address_columns_str.split(",")] if address_columns_str else None
+            address_columns = (
+                [int(col.strip()) for col in address_columns_str.split(",")]
+                if address_columns_str
+                else None
+            )
         except ValueError as e:
             raise FileProcessingError(f"Invalid column numbers: {str(e)}")
 
         # Validate country filter
         if country_filter and country_filter not in ("kz", "ru"):
-            raise FileProcessingError("Invalid country filter. Use 'kz' or 'ru' or leave empty")
+            raise FileProcessingError(
+                "Invalid country filter. Use 'kz' or 'ru' or leave empty"
+            )
 
         # Validate search parameters
         if search_value and not address_columns:
-            raise FileProcessingError("Address columns must be specified when using address search")
+            raise FileProcessingError(
+                "Address columns must be specified when using address search"
+            )
 
         # Process file
         try:
@@ -319,7 +363,7 @@ def process_names():
                 name_columns,
                 country_filter,
                 address_columns,
-                search_value if search_value else None
+                search_value if search_value else None,
             )
         except Exception as e:
             logger.error(f"File processing failed: {str(e)}")
@@ -327,7 +371,10 @@ def process_names():
 
         # Prepare response
         response = make_response(output_buffer.getvalue())
-        response.headers.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response.headers.set(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
         filename_parts = ["filtered_names"]
         if country_filter:
@@ -350,6 +397,7 @@ def process_names():
     except Exception as e:
         logger.error(f"Unexpected processing error: {str(e)}")
         raise FileProcessingError("An unexpected error occurred during processing")
+
 
 @app.route("/classify_name", methods=["POST"])
 def classify_name():
@@ -389,6 +437,7 @@ def classify_name():
     except Exception as e:
         logger.error(f"Error classifying name: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 @app.route("/")
 def index():
@@ -764,6 +813,7 @@ def index():
     </body>
     </html>
     """
+
 
 if __name__ == "__main__":
     try:

@@ -5,6 +5,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 import openpyxl
+
 from app import app, process_uploaded_file, setup_model
 
 # Configure detailed test logging
